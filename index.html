@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Expires" content="Fri, Jan 01 1900 00:00:00 GMT">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Cache-Control" content="no-cache">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="Lang" content="en">
+<meta name="description" content="">
+<meta name="keywords" content="">
+<title>Test API</title>
+<script src="http://code.jquery.com/jquery-1.9.1.js"></script>
+</head>
+<body>
+
+	<style>
+	* { font-family: Arial; font-size: 100%; }
+	label { 
+		display: inline-block;
+		width: 120px;
+	}
+	.form {
+		font-size: 90%;
+		margin-bottom: 30px;
+		line-height: 30px;;
+	}
+	.form-row {
+		
+	}
+	.form input[type="text"], .form select { min-width: 200px; }
+	.form .error { border: 1px solid red; }
+	.list th { padding: 2px 10px; color: gray; font-size: 80%; font-weight: normal; text-align: center; border-bottom: 1px solid gray; }
+	.list tr:hover td {
+		background-color: #f0f0f0; cursor: pointer
+	}
+	.list td { padding: 0 10px; height: 22px; font-size: 90%; }
+	#member_id { border: none; }
+	</style>
+	
+	<div class="form" id="form">
+		
+		<div class="form-row">
+			<label for="member_id">ID</label>
+			<input type="text" id="member_id" readonly="readonly" placeholder="New member" />
+		</div>
+		<div class="form-row">
+			<label for="firstname">First Name <span>*</span></label>
+			<input type="text" id="firstname" placeholder="Enter your first name" pattern="^[a-zA-Z ]{2,30}$">
+		</div>
+		<div class="form-row">
+			<label for="lastname">Last Name <span>*</span></label>
+			<input type="text" id="lastname" placeholder="Enter your last name" pattern="^[a-zA-Z ]{2,30}$">
+		</div>
+		<div class="form-row">
+			<label for="occupation">Occupation</label>
+			<select id="occupation"> 
+				<option value="0">Please choose...</option>
+			</select>
+		</div>
+		<div class="form-row">
+			<button id="action-new">New</button> | <button id="action-save">Save</button>
+		</div>
+	</div>
+	
+	<table class="list" id="members">
+	<thead>
+		<tr>
+			<th>ID</th>	
+			<th>First Name</th>	
+			<th>Last Name</th>	
+			<th>Occupation</th>	
+			<th>Actions</th>	
+		</tr>
+	</thead>
+	<tbody>
+		<tr>
+			<td colspan="5" style="text-align: center">No members</td>
+		</tr>	
+	</tbody>
+	</table> 
+	
+	<script>
+	$(document).ready(function(){
+		var api_auth_key = '81026189732462938470129874012934',
+			fields = ['member_id', 'firstname', 'lastname', 'occupation'],
+			$form = $('#form'),
+			$members = $('#members'),
+			$action_save = $('#action-save'),
+			$action_new = $('#action-new');
+
+		$action_new.prop('disabled', true);
+		$action_save.prop('disabled', true);
+
+		assignFormActions = function(){
+			$action_new.click(function(){
+				$(fields).each(function(idx, item){
+					var $item = $form.find('#' + item);
+					if ($item.is('input') && $item.attr('type') == 'text') {
+						$item.val('');	
+					} else if ($item.is('select')) {
+						$item.find('option').attr('selected', false);	
+						$item.find('option[value="0"]').attr('selected', true);	
+					}	
+				});	
+			});
+			
+			$action_save.click(function(){
+				var $this = $(this), 
+					data = {'auth_key': api_auth_key}, 
+					is_form_valid = true;
+				
+				$this.prop('disabled', true);
+				$form.find('input, select').removeClass('error');
+				
+				$(fields).each(function(idx, item){
+					var $item = $form.find('#' + fields[idx]);
+					if (!$item.length) return;
+					if ($item.is('input') && $item.attr('pattern')) {	
+						var regexp = new RegExp($item.attr('pattern')),
+							is_item_valid = regexp.test($item.val()); 
+						if (!is_item_valid) {
+							$item.addClass('error');	
+						} 
+            			is_form_valid = is_form_valid && is_item_valid;
+					} else if ($item.is('select')) {
+						var is_item_valid = $item.find('option:selected').val() > 0;	
+						is_form_valid = is_form_valid && is_item_valid;	
+						if (!is_item_valid) {
+							$item.addClass('error');	
+						}
+					}
+				});
+				if (!is_form_valid) { 
+					$this.prop('disabled', false);
+					return;
+				}
+
+				$(fields).each(function(idx, item){
+					var $item = $form.find('#' + fields[idx]);
+					if ($item.attr('readonly') && !$item.val()) return;
+					data[item] = $item.val();
+				});
+				
+				data['entity'] = 'member';
+				data['action'] = parseInt(data['member_id']) > 0 ? 'update' : 'create';
+			
+				$.ajax({
+					'method': 'POST',
+					'url': 'test.php',
+					'data': data,
+					success: function(response){
+						if (response.result && response.result.length) {
+							var $content = $members.find('tbody');
+							if (data['action'] == 'create') {
+								
+								$(response.result).each(function(idx, item){
+									var $row = $('<tr><td>' + item.member_id + '</td><td>' + item.firstname + '<td>' + item.lastname + '</td><td>' + item.occupation + '</td><td><a href="#" class="action-delete">Delete</a></td></tr>');
+									$content.append($row);
+								});
+								
+								assignDeleteActions();
+								assignEditActions();
+								
+								$('#action-new').click();	
+							} else {							
+								$(response.result).each(function(idx, item){
+									var $cells = $members.find('tr[data-member-id="' + item.member_id + '"]').find('td');
+									console.log(fields.indexOf('member_id'));
+									$($cells[fields.indexOf('member_id')]).html(item.member_id);
+									$($cells[fields.indexOf('firstname')]).html(item.firstname);
+									$($cells[fields.indexOf('lastname')]).html(item.lastname);
+									$($cells[fields.indexOf('occupation')]).html(item.occupation);
+								});							
+							}
+						}
+						$this.prop('disabled', false);
+					}
+				});	
+			});	
+		}
+		
+		assignDeleteActions = function(){
+			$members.find('.action-delete').off('click').on('click', function(e){
+				e.preventDefault();
+				if (!confirm("Are you sure?"))  return false;
+				
+				var $this = $(this),
+					$row = $this.closest('tr'),
+					member_id = $row.find('td:first-child').html(),
+					data = {'auth_key': api_auth_key, 'entity': 'member', 'action': 'delete', 'member_id': member_id};
+					
+				$this.prop('disabled', true);
+				
+				$.ajax({
+					'method': 'POST',
+					'url': 'test.php',
+					'data': data,
+					success: function(response){     
+						if(!response.result) return;
+						
+						if (response.result == 'success') {
+							$row.remove();
+							$('#action-new').click();
+						}	
+						$this.prop('disabled', false);
+					}
+				}); 	
+			});
+		}
+		
+		assignEditActions = function(){ 
+
+			$members.find('tr td').filter(function(idx){ 
+				var $this = $(this);         
+				return $this.find('a').length == 0;		
+			}).off('click').on('click', function(e){   
+				e.preventDefault();
+				
+				/*$members.find('tr').each(function(){
+					var $this = $(this);    console.log($this.data('changed'));
+					if (typeof $this.data('changed') === 'undefined') {
+						$this.find('td').each(function(){
+							var $this = $(this);
+							if ($this.find('input').length) {
+								$this.html($this.find('input').val());
+							} else if ($this.find('select').length) {
+								$this.html($this.find('select').find('option:selected').text());
+							}	
+						});	
+					}	
+				});*/
+				
+				var $this = $(this);   
+				$this.parent().find('td').each(function(idx, item){
+					if (typeof fields[idx] === 'undefined') return;
+					
+					/*var $this = $(this),
+						text = $this.html(),
+						$input;
+						
+					if (fields[idx] == 'member_id') return;
+					
+					if (fields[idx] != 'occupation') {
+						$input = $('<input type="text" value="' + text + '" size="10">');
+					} else {
+						var $input = $form.find('#occupation').clone();
+						$input.find('option').prop('selected', false);
+						$input.find('option').filter(function(){ 
+							return $(this).html() == text; 
+						}).prop('selected', true);  
+					}
+					
+					$this.html($input).off('click').find('input, select').on('keyup change', function(){  
+						var $tr = $(this).closest('tr');   
+						$tr.data('changed', 1).find('a.action-save').show();
+					});*/  
+					
+					var $this = $(this),
+						$item = $form.find('#' + fields[idx]),
+						text = $this.html();    
+					if ($item.is('input') && $item.attr('type') == 'text') {
+						$form.find('#' + fields[idx]).val(text);
+					} else if ($item.is('select')) {  
+						var $options = $item.find('option');
+						$options.prop('selected', false);
+						$options.filter(function(){ 
+							return $(this).html() == text; 
+						}).prop('selected', true);
+					} 					
+				});
+			});
+		}
+		
+		getMembers = function(){
+			var data = {'auth_key': api_auth_key, 'entity': 'member', 'action': 'read'};
+			
+			$.ajax({
+				'method': 'POST',
+				'url': 'test.php',
+				'data': data,
+				success: function(response){     
+					if(!response.result) return;
+					
+					if (response.result.length) {
+						var $content = $members.find('tbody');
+						$content.empty();
+						$(response.result).each(function(idx, item){
+							var $row = $('<tr data-member-id="' + item.member_id + '"><td>' + item.member_id + '</td><td>' + item.firstname + '<td>' + item.lastname + '</td><td>' + item.occupation + '</td><td><a href="#" class="action-delete">Delete</a>  <a href="#" class="action-save" style="display: none">Save</a></td></tr>');
+							$content.append($row);
+						});
+						
+						assignDeleteActions();
+						assignEditActions();
+						
+						assignFormActions();
+						$action_new.prop('disabled', false);
+						$action_save.prop('disabled', false);
+					}	
+				}
+			});	
+		}
+
+		var data = {'auth_key': api_auth_key, 'entity': 'occupation', 'action': 'read'};
+		
+		$.ajax({
+			'method': 'POST',
+			'url': 'test.php',
+			'data': data,
+			success: function(response){     
+				if(!response.result) return;
+				
+				if (response.result.length) {
+					var $occupation = $('#occupation');
+					$occupation.empty().append($('<option value="0">Please choose</option>'));
+					$(response.result).each(function(idx, item){
+						var $option = $('<option value="' + item.occupation_id + '">' + item.name + '</option>');
+						$occupation.append($option);
+					});
+					
+					getMembers();
+				}	
+			}
+		});   
+	});
+	</script>
+  
+</body>
+</html>
